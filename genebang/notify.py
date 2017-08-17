@@ -6,11 +6,23 @@
 
 import os
 import requests
+import requests.packages.urllib3
 import time
+import logging
+
 from lxml import etree
 from sqlalchemy import Column, String, Integer, create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+
+requests.packages.urllib3.disable_warnings()
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                    datefmt='%m-%d %H:%M',
+                    filename='access.log',
+                    filemode='w')
+access_logger = logging.getLogger('access')
+add_logger = logging.getLogger('add')
 
 POOL_INDEX = "https://www.genebang.com/project-pool/index"
 PROJECT_URL = "https://www.genebang.com/project-pool/detail/"   # need project id
@@ -61,12 +73,12 @@ def auto_detect(sleep=300):
     Detect new projects by search the project pool index page every 300s(by default).
     '''
     while True:
-        page = requests.get(POOL_INDEX)
-        html = etree.HTML(page.text)
+        page = requests.get(POOL_INDEX, verify=False).text
+        html = etree.HTML(page)
         session = DBSession()
         tmp_project = []
         for item in html.xpath('//div[@class="project-detail-name"]/a'):
-            #print ' : '.join(item.values())
+            #access_logger.info(' : '.join(item.values()).encode('utf-8'))
             url, blank, name = item.values()
             url = os.path.basename(url)
             project = session.query(Project).filter(Project.url == url).first()
@@ -78,12 +90,14 @@ def auto_detect(sleep=300):
                 session.commit()
                 session.close()
                 tmp_project.append((url, name))
+                add_logger.info('add : %s:%s' % (url,name.encode('utf-8')))
         if tmp_project:
             response = sendcloud('linxzh1989@qq.com', tmp_project) 
-        print '-' * 5, time.strftime('%Y-%m-%d-%H-%M',time.localtime(time.time())) 
+            access_logger.info(response.text)
+        access_logger.info('-' * 5 )
 
         time.sleep(sleep)
 
 
 if __name__ == "__main__":
-    auto_detect()
+    auto_detect(sleep=600)
